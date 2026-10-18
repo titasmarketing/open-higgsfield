@@ -324,15 +324,20 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
      its own skeletons and keeps its own watch, so the composer is free the
      moment the tiles appear and any number of runs can be in flight. */
   const generate = useCallback(async () => {
+    const plane = assemblePlane();
+    const entry = getModel(plane.model);
+    if (!entry.promptOptional && !plane.prompt.text.trim()) return;
+    const blocked = entry.check?.(plane);
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!keyConfigured) {
       setKeysOpen(true);
       setError("Add your platform key to generate.");
       return;
     }
-    const plane = assemblePlane();
-    if (!plane.prompt.text.trim()) return;
 
-    const entry = getModel(plane.model);
     const ratio = ratioToCss(
       plane.settings.aspectRatio,
       entry.surface === "image" ? "4 / 3" : "16 / 9",

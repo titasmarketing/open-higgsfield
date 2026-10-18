@@ -35,6 +35,9 @@ export type StatusResult =
   | { requestId: string; status: GenerationStatus }
   | { requestId: string; error: string };
 
+export type MarketingPreset = { id: string; name: string };
+export type PresetPage = { items: MarketingPreset[]; cursor: string | null };
+
 export type PlatformClientOptions = {
   apiKey: string;
   baseUrl: string;
@@ -72,6 +75,21 @@ export function createPlatformClient(options: PlatformClientOptions) {
     async submit(model: string, input: Record<string, unknown>): Promise<QueuedGeneration> {
       if (!isModelId(model)) throw new PlatformError(400, { detail: "Invalid model" });
       return mapQueued(await send("POST", `/${model}`, input));
+    },
+    /** One page of the visible Marketing Studio presets. */
+    async marketingPresets(cursor?: string | null): Promise<PresetPage> {
+      const query = new URLSearchParams({ size: "50" });
+      if (cursor) query.set("cursor", cursor);
+      const data = asRecord(await send("GET", `/marketing-studio/image/presets?${query}`));
+      const items = Array.isArray(data.items)
+        ? data.items.flatMap((item) => {
+            const row = asRecord(item);
+            const id = stringField(row, "id");
+            if (!id) return [];
+            return [{ id, name: stringField(row, "name") ?? id }];
+          })
+        : [];
+      return { items, cursor: stringField(data, "cursor") ?? null };
     },
     async status(requestId: string): Promise<GenerationStatus> {
       if (!requestId) throw new PlatformError(400, { detail: "Missing request id" });

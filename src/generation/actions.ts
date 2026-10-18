@@ -13,7 +13,7 @@ import {
   parseCredentialInput,
 } from "./credentials";
 import { createPlatformClient } from "./platform";
-import type { StatusResult } from "./platform";
+import type { MarketingPreset, StatusResult } from "./platform";
 import { toPlatform } from "./to-platform";
 
 export async function savePlatformCredentials(data: unknown) {
@@ -37,8 +37,25 @@ export async function submitGeneration(plane: GenerationPlane) {
     ...plane,
     settings: parseSettings(model, plane.settings),
   };
+  if (!model.promptOptional && !parsed.prompt.text.trim()) throw new Error("Write a prompt first");
+  const blocked = model.check?.(parsed);
+  if (blocked) throw new Error(blocked);
   const { path, body } = toPlatform(parsed);
   return createPlatformClient(await readCredentials()).submit(path, body);
+}
+
+/** Every visible Marketing Studio preset, all pages, in catalog order. */
+export async function listMarketingPresets(): Promise<MarketingPreset[]> {
+  const client = createPlatformClient(await readCredentials());
+  const all: MarketingPreset[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 10; page++) {
+    const next = await client.marketingPresets(cursor);
+    all.push(...next.items);
+    if (!next.cursor || next.cursor === cursor) break;
+    cursor = next.cursor;
+  }
+  return all;
 }
 
 /** Every request in flight, answered in one round trip. Next dispatches server

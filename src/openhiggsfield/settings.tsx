@@ -1,6 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
+import { listMarketingPresets } from "@/generation/actions";
 import type { ModelEntry } from "@/generation/catalog";
+import type { MarketingPreset } from "@/generation/platform";
 import { useSettings } from "@/generation/stores/settings";
 
 import {
@@ -61,6 +65,31 @@ export function SettingPill({
   const value = values[settingKey];
   const glyph = glyphFor(settingKey, value);
 
+  if (field.type === "text" || field.type === "preset") {
+    const raw = settings.byModel[model.id] ?? {};
+    const text = typeof value === "string" ? value.trim() : "";
+    const shown =
+      field.type === "preset"
+        ? text
+          ? String(raw.presetName ?? "Preset")
+          : "No preset"
+        : text || label;
+    return (
+      <button
+        type="button"
+        className="ohf-ctl ohf-tip"
+        data-tip={label}
+        data-empty={!text}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label={`${label} — ${text ? shown : "empty"}`}
+        onClick={(event) => onOpen(event.currentTarget)}
+      >
+        <span className="ohf-ctl-value ohf-ctl-value--clip">{shown}</span>
+      </button>
+    );
+  }
+
   if (field.type === "boolean") {
     const on = value === true;
     return (
@@ -118,6 +147,30 @@ export function SettingPopover({
 
   const label = settingLabel(settingKey);
 
+  if (field.type === "text") {
+    const value = typeof values[settingKey] === "string" ? (values[settingKey] as string) : "";
+    return (
+      <div className="ohf-popover ohf-popover--setting" role="dialog" aria-label={label}>
+        <Field label={label} value={`${value.length}/${field.maxLength}`}>
+          <textarea
+            className="ohf-input ohf-input--area"
+            value={value}
+            maxLength={field.maxLength}
+            placeholder={field.placeholder}
+            rows={3}
+            autoFocus
+            onChange={(event) => settings.set(model.id, { [settingKey]: event.target.value })}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (field.type === "preset") {
+    const value = typeof values[settingKey] === "string" ? (values[settingKey] as string) : "";
+    return <PresetPopover modelId={model.id} settingKey={settingKey} label={label} value={value} />;
+  }
+
   if (field.type === "enum") {
     const value = typeof values[settingKey] === "string" ? (values[settingKey] as string) : field.default;
     return (
@@ -153,6 +206,81 @@ export function SettingPopover({
           label={label}
           onChange={(next) => settings.set(model.id, { [settingKey]: next })}
         />
+      </Field>
+    </div>
+  );
+}
+
+/* The preset catalog is managed by Higgsfield and changes over time, so it is
+   fetched live (once per page load) instead of being written into the catalog. */
+let presetCache: Promise<MarketingPreset[]> | null = null;
+
+function loadPresets(): Promise<MarketingPreset[]> {
+  presetCache ??= listMarketingPresets().catch((caught: unknown) => {
+    presetCache = null;
+    throw caught;
+  });
+  return presetCache;
+}
+
+function PresetPopover({
+  modelId,
+  settingKey,
+  label,
+  value,
+}: {
+  modelId: string;
+  settingKey: string;
+  label: string;
+  value: string;
+}) {
+  const settings = useSettings();
+  const [presets, setPresets] = useState<MarketingPreset[] | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    loadPresets().then(
+      (items) => live && setPresets(items),
+      (caught: unknown) =>
+        live && setFailed(caught instanceof Error ? caught.message : "Could not load presets"),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <div
+      className="ohf-popover ohf-popover--setting ohf-popover--list ohf-popover--presets"
+      role="dialog"
+      aria-label={label}
+    >
+      <Field label={label}>
+        {failed ? (
+          <p className="ohf-preset-note">
+            Não deu para carregar os presets. Confira a chave da Higgsfield e tente de novo.
+          </p>
+        ) : !presets ? (
+          <p className="ohf-preset-note">Carregando presets…</p>
+        ) : (
+          <OptionList
+            options={[
+              { value: "", label: "No preset" },
+              ...presets.map((preset) => ({ value: preset.id, label: preset.name })),
+            ]}
+            value={value}
+            onChange={(next) =>
+              settings.set(modelId, {
+                [settingKey]: next,
+                presetName: presets.find((preset) => preset.id === next)?.name ?? "",
+              })
+            }
+          />
+        )}
+        <p className="ohf-preset-note">
+          Com preset: anexe a foto do produto (e, opcional, uma foto de modelo).
+        </p>
       </Field>
     </div>
   );

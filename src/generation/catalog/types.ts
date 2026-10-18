@@ -10,7 +10,11 @@ export type MediaItem = {
 export type SettingField =
   | { type: "enum"; values: readonly string[]; default: string }
   | { type: "range"; min: number; max: number; default: number; step?: number }
-  | { type: "boolean"; default: boolean };
+  | { type: "boolean"; default: boolean }
+  /** Free text the model reads as a brief field (niche, audience, language). */
+  | { type: "text"; default: string; maxLength: number; placeholder?: string }
+  /** A Marketing Studio preset picked from the live catalog; "" means none. */
+  | { type: "preset"; default: "" };
 
 export type PlatformPaths = {
   text?: string;
@@ -27,6 +31,10 @@ export type ModelEntry = {
   settings: Record<string, SettingField>;
   /** Submit paths when the shared mapper is enough. Soul, Kling 3, and Seedance keep custom maps. */
   paths?: PlatformPaths;
+  /** The prompt may be left empty (Genjutsu works from its inputs alone). */
+  promptOptional?: boolean;
+  /** Reason the run cannot be submitted yet, or null when it can. */
+  check?: (plane: GenerationPlane) => string | null;
 };
 
 export type GenerationPlane = {

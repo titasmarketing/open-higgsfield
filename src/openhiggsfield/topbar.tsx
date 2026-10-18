@@ -72,7 +72,12 @@ export function Topbar({
 
   return (
     <div className="ohf-topbar">
-      <h1 className="ohf-sr">OpenHiggsfield AI — Open source AI studio</h1>
+      <h1 className="ohf-sr">TITÃS Studio — Estúdio de IA da TITÃS Marketing</h1>
+
+      <a className="ohf-brand ohf-enter-1" href="/" aria-label="TITÃS Studio">
+        <img className="ohf-brand-lockup" src="/brand/titas-lockup.svg" alt="" />
+        <img className="ohf-brand-t" src="/brand/titas-t.svg" alt="" />
+      </a>
 
       <div className="ohf-bar ohf-enter-1">
         <div

@@ -19,7 +19,95 @@ const MAP: Record<string, Mapper> = {
   "seedance-2.5": (plane) => mapSeedance(plane, "bytedance/seedance-2.5"),
   "seedance-2.5-edit": (plane) => mapSeedanceSource(plane, "bytedance/seedance-2.5/video-edit", false),
   "seedance-2.5-extend": (plane) => mapSeedanceSource(plane, "bytedance/seedance-2.5/video-extend", true),
+  "ads-studio": mapAdsStudio,
+  "marketing-studio-image": mapMarketingStudioImage,
+  genjutsu: mapGenjutsu,
+  "wan-3-prime-reference": mapWan3PrimeReference,
 };
+
+function mapWan3PrimeReference(plane: GenerationPlane): Mapped {
+  const refs = urls(plane, "reference");
+  const videos = urls(plane, "video");
+  const audios = urls(plane, "audio");
+  return {
+    path: "alibaba/wan-3.0-prime/reference-to-video",
+    body: {
+      prompt: plane.prompt.text,
+      duration: plane.settings.duration,
+      resolution: plane.settings.resolution,
+      aspect_ratio: plane.settings.aspectRatio,
+      generate_audio: plane.settings.generateAudio,
+      prompt_extend: plane.settings.promptExtend,
+      enable_thinking: plane.settings.enableThinking,
+      ...(refs.length ? { image_urls: refs } : {}),
+      ...(videos.length ? { video_urls: videos } : {}),
+      ...(audios.length ? { audio_urls: audios } : {}),
+    },
+  };
+}
+
+function mapAdsStudio(plane: GenerationPlane): Mapped {
+  const refs = urls(plane, "reference");
+  return {
+    path: "higgsfield/ads-studio/v1.0",
+    body: {
+      prompt: plane.prompt.text,
+      aspect_ratio: plane.settings.aspectRatio,
+      batch_size: plane.settings.batchSize,
+      niche: plane.settings.niche,
+      target_audience: plane.settings.targetAudience,
+      language: plane.settings.language,
+      image_urls: refs,
+    },
+  };
+}
+
+function mapMarketingStudioImage(plane: GenerationPlane): Mapped {
+  const refs = urls(plane, "reference");
+  const preset = typeof plane.settings.preset === "string" ? plane.settings.preset : "";
+  const body: Record<string, unknown> = {
+    prompt: plane.prompt.text,
+    resolution: plane.settings.resolution,
+    aspect_ratio: plane.settings.aspectRatio,
+    moderation: "auto",
+  };
+  if (preset) {
+    /* Enhanced mode: a preset plus the product image (and an optional model
+       photo). The API only accepts high quality here. */
+    if (refs.length < 1 || refs.length > 2) {
+      throw new Error("A Marketing Studio preset needs 1 product image (plus an optional model photo)");
+    }
+    return {
+      path: "marketing-studio/image",
+      body: { ...body, enhance_prompt: true, preset_id: preset, image_urls: refs, quality: "high" },
+    };
+  }
+  return {
+    path: "marketing-studio/image",
+    body: {
+      ...body,
+      enhance_prompt: false,
+      quality: plane.settings.quality,
+      ...(refs.length ? { image_urls: refs } : {}),
+    },
+  };
+}
+
+function mapGenjutsu(plane: GenerationPlane): Mapped {
+  const video = urls(plane, "video")[0];
+  const refs = urls(plane, "reference");
+  if (!video) throw new Error("Genjutsu needs a source video");
+  if (!refs.length) throw new Error("Genjutsu needs at least one reference image");
+  return {
+    path: "higgsfield/genjutsu/motion-transfer/v1.0",
+    body: {
+      prompt: plane.prompt.text,
+      video_url: video,
+      image_urls: refs,
+      resolution: plane.settings.resolution,
+    },
+  };
+}
 
 export function toPlatform(plane: GenerationPlane): Mapped {
   const model = getModel(plane.model);

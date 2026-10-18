@@ -5,6 +5,7 @@ import { grokImagine2 } from "./grok-imagine-2";
 import { grokImagineVideo15 } from "./grok-imagine-video-1.5";
 import { happyHorse1 } from "./happy-horse-1";
 import { happyHorse11 } from "./happy-horse-1.1";
+import { adsStudio, genjutsu, marketingStudioImage } from "./higgsfield-studios";
 import { ideogram4 } from "./ideogram-4";
 import { kling25 } from "./kling-2.5";
 import { kling26 } from "./kling-2.6";
@@ -33,10 +34,13 @@ import type { ModelEntry } from "./types";
 import { wan26 } from "./wan-2.6";
 import { wan27 } from "./wan-2.7";
 import { wan3 } from "./wan-3";
-import { wan3Prime } from "./wan-3-prime";
+import { wan3Prime, wan3PrimeReference } from "./wan-3-prime";
 import { zImageTurbo } from "./z-image-turbo";
 
 export const MODELS: readonly ModelEntry[] = [
+  adsStudio,
+  marketingStudioImage,
+  genjutsu,
   soul2,
   soulCinema,
   seedance25,
@@ -59,6 +63,7 @@ export const MODELS: readonly ModelEntry[] = [
   zImageTurbo,
   wan3,
   wan3Prime,
+  wan3PrimeReference,
   wan27,
   wan26,
   flux3,
