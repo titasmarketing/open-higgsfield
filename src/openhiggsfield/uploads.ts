@@ -1,5 +1,6 @@
 import { browserLegacy, defaultKv, type Kv, type LegacyStore } from "./idb";
 import type { AssetKind } from "./data";
+import { createSynced, type Synced } from "./sync";
 
 /** A file the visitor sent to Blob. The URL is public and permanent, so the
     library outlives the session that produced it — the same reason run history
@@ -88,6 +89,20 @@ function readLegacy(legacy: LegacyStore | undefined): UploadRecord[] {
   }
 }
 
+/** One account's upload shelf: the device cache plus the copy every other
+    device of that account reads. */
+export function createUploadsStore(userId: string): Synced<UploadRecord> {
+  return createSynced<UploadRecord>({
+    collection: "uploads",
+    userId,
+    readLocal: loadUploads,
+    writeLocal: saveUploads,
+    merge: mergeUploads,
+    coerce: (rows) =>
+      rows.map(coerceUpload).filter((row): row is UploadRecord => row !== null).slice(0, MAX_RECORDS),
+  });
+}
+
 /** Newest first, and one entry per URL: re-picking the same file from the OS
     dialog moves it back to the front rather than stacking a duplicate tile. */
 export function rememberUpload(
@@ -107,7 +122,7 @@ export function kindOfFile(file: File): AssetKind {
   return "image";
 }
 
-function coerceUpload(value: unknown): UploadRecord | null {
+export function coerceUpload(value: unknown): UploadRecord | null {
   if (value === null || typeof value !== "object") return null;
   const record = value as Partial<UploadRecord>;
   if (

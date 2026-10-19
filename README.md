@@ -70,7 +70,13 @@ Next.js 16 App Router on Vercel · React 19 · plain CSS · Zustand · pnpm
 
 ### State and errors
 
-- **History persists** in IndexedDB in this browser (60 records). Favorites are
+- **Signed-in sync.** The studio asks for a Clerk account. History (60 records)
+  and the upload shelf (40) follow the account: each browser keeps a local cache
+  and sends only what changed to `/api/sync/{history,uploads}`, stored in Neon
+  (`ohf_records`, created on first use). The first sign-in on a device merges
+  what that browser already held; after that the server's copy is authoritative,
+  so a delete on one device reaches the rest. The platform key is still stored
+  per browser. History persists in IndexedDB as a cache (60 records). Favorites are
   a deliberate keep and never age out of the cap. Result URLs belong to the
   generation platform, so old history can outlive its CDN lifetime and show gaps.
 - **Failed, NSFW and canceled runs** are recorded as failed tiles carrying the
@@ -96,8 +102,8 @@ Each generate is one object: `{ model, prompt, media, settings }`.
   no studio changes.
 - **Five small Zustand stores** — shared image/video prompt, shared image/video
   media, `settings[modelId]`, and a tiny `active` store. No store per model.
-- **Uploads** go client-direct to Vercel Blob through `/api/blob`, which issues
-  scoped tokens. `blob:` URLs are preview-only.
+- **Uploads** go client-direct to Vercel Blob through `/api/blob`, which needs a
+  signed-in user and issues tokens scoped to `<userId>/`. `blob:` URLs are preview-only.
 
 ---
 
@@ -114,7 +120,10 @@ Open the studio, press **Add key**, and paste your platform key as `id:secret`.
 
 ```bash
 HF_API_BASE_URL=                      # generation API origin, server only
-OPEN_HIGGSFIELD_READ_WRITE_TOKEN=     # Vercel Blob read-write token
+OPEN_HIGGSFIELD_READ_WRITE_TOKEN=     # Vercel Blob read-write token (BLOB_READ_WRITE_TOKEN also works)
+DATABASE_URL=                         # Neon Postgres connection string, server only
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=    # Clerk sign-in
+CLERK_SECRET_KEY=                     # Clerk sign-in, server only
 ```
 
 ### Commands

@@ -1,26 +1,35 @@
+import { auth } from "@clerk/nextjs/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import {
-  DEVICE_COOKIE,
-  DEVICE_COOKIE_OPTIONS,
-  blobPathname,
-  resolveDeviceId,
-} from "@/generation/device";
-
-// Anyone who can hit this route can upload. Gate it when auth exists.
+import { blobPathname } from "@/generation/blob-path";
 
 export async function POST(request: Request): Promise<NextResponse> {
   const incoming = (await request.json()) as HandleUploadBody;
-  const device =
-    incoming.type === "blob.generate-client-token" ? await readDeviceId() : null;
-  const body = device ? withDevicePath(incoming, device.deviceId) : incoming;
+
+  /* Only the token request comes from a signed-in browser. The completion
+     event comes from Blob itself and is checked by the SDK's own signature. */
+  let body = incoming;
+  if (incoming.type === "blob.generate-client-token") {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Sign in to upload" }, { status: 401 });
+    body = {
+      ...incoming,
+      payload: {
+        ...incoming.payload,
+        pathname: blobPathname(userId, incoming.payload.pathname),
+      },
+    };
+  }
   console.info("[blob] upload", summarizeBlobEvent(body));
 
+  const token = process.env.OPEN_HIGGSFIELD_READ_WRITE_TOKEN ?? process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) {
+    console.error("[blob] missing OPEN_HIGGSFIELD_READ_WRITE_TOKEN or BLOB_READ_WRITE_TOKEN");
+    return NextResponse.json({ error: "Blob storage is not configured" }, { status: 500 });
+  }
+
   try {
-    const token = process.env.OPEN_HIGGSFIELD_READ_WRITE_TOKEN;
-    if (!token) throw new Error("Missing OPEN_HIGGSFIELD_READ_WRITE_TOKEN");
     const json = await handleUpload({
       body,
       request,
@@ -41,38 +50,15 @@ export async function POST(request: Request): Promise<NextResponse> {
         };
       },
     });
-    return withDeviceCookie(
+    return NextResponse.json(
       json.type === "blob.generate-client-token" && body.type === "blob.generate-client-token"
-        ? NextResponse.json({ ...json, pathname: body.payload.pathname })
-        : NextResponse.json(json),
-      device,
+        ? { ...json, pathname: body.payload.pathname }
+        : json,
     );
   } catch (error) {
     console.error("[blob] upload failed", error instanceof Error ? error.message : error);
-    if (device?.minted) return withDeviceCookie(new NextResponse(null, { status: 500 }), device);
-    throw error;
+    return NextResponse.json({ error: "Upload could not be authorised" }, { status: 500 });
   }
-}
-
-async function readDeviceId() {
-  const jar = await cookies();
-  return resolveDeviceId(jar.get(DEVICE_COOKIE)?.value);
-}
-
-function withDeviceCookie(
-  response: NextResponse,
-  device: { deviceId: string; minted: boolean } | null,
-) {
-  if (device?.minted) response.cookies.set(DEVICE_COOKIE, device.deviceId, DEVICE_COOKIE_OPTIONS);
-  return response;
-}
-
-function withDevicePath(body: HandleUploadBody, deviceId: string): HandleUploadBody {
-  if (body.type !== "blob.generate-client-token") return body;
-  return {
-    ...body,
-    payload: { ...body.payload, pathname: blobPathname(deviceId, body.payload.pathname) },
-  };
 }
 
 function summarizeBlobEvent(body: HandleUploadBody) {

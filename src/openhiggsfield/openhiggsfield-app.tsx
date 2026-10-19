@@ -26,7 +26,8 @@ import {
   type GalleryView,
 } from "./data";
 import { Gallery } from "./gallery";
-import { loadHistory, mergeHistory, replaceRequest, saveHistory, stepRun, type RunRecord } from "./history";
+import { mergeHistory, replaceRequest, stepRun, type RunRecord } from "./history";
+import { StoresProvider, useStores } from "./stores";
 import { CloseIcon, UndoIcon } from "./icons";
 import { SelectionBar, type SaveProgress } from "./selection-bar";
 import { Topbar } from "./topbar";
@@ -157,7 +158,22 @@ function describeError(caught: unknown): string {
   return `Generation failed — ${message}. Try again; if it repeats, check the key in the sidebar.`;
 }
 
-export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: string }) {
+export function OpenHiggsfieldApp({
+  userId,
+  fontClassName = "",
+}: {
+  userId: string;
+  fontClassName?: string;
+}) {
+  return (
+    <StoresProvider userId={userId}>
+      <Studio fontClassName={fontClassName} />
+    </StoresProvider>
+  );
+}
+
+function Studio({ fontClassName }: { fontClassName: string }) {
+  const { history: historyStore } = useStores();
   const surface = useActive((state) => state.surface);
   const modelId = useActive((state) => state.model);
   const setModel = useActive((state) => state.setModel);
@@ -203,7 +219,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
      next mount hydrated, or the empty initial list is written over the store. */
   useEffect(() => {
     let live = true;
-    void loadHistory()
+    void historyStore.load()
       .then((rows) => {
         if (!live) return;
         setHistory((current) => mergeHistory(rows, current));
@@ -217,8 +233,8 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     };
   }, []);
   useEffect(() => {
-    if (historyLoaded) void saveHistory(history);
-  }, [historyLoaded, history]);
+    if (historyLoaded) void historyStore.save(history);
+  }, [historyStore, historyLoaded, history]);
 
   useEffect(() => {
     void hasPlatformCredentials().then((ready) => {
@@ -260,7 +276,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         const records = terminalRows(requestId, draft, status);
         setHistory((prev) => {
           const next = replaceRequest(prev, requestId, records);
-          void saveHistory(next);
+          void historyStore.save(next);
           return next;
         });
         markFresh(records.filter((record) => record.status === "completed").map((record) => record.id));
@@ -277,7 +293,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         if (message.includes("platform key")) setKeysOpen(true);
         setHistory((prev) => {
           const next = replaceRequest(prev, requestId, failedRows(requestId, expected, draft, message));
-          void saveHistory(next);
+          void historyStore.save(next);
           return next;
         });
         setError((prev) => prev ?? message);
@@ -387,7 +403,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         const queued = await submitGeneration(plane);
         setHistory((prev) => {
           const next = [...runningRows(queued.requestId, slot.skeletons.length, draft), ...prev];
-          void saveHistory(next);
+          void historyStore.save(next);
           return next;
         });
         setRuns((prev) => prev.filter((active) => !slot.skeletons.includes(active.id)));

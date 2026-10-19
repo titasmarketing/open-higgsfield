@@ -1,5 +1,6 @@
 "use client";
 
+import { UserButton } from "@clerk/nextjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { VIEWS, VIEW_LABELS, type GalleryView } from "./data";
@@ -142,6 +143,11 @@ export function Topbar({
           <span className="ohf-key-text">{keyConfigured ? "Your key" : "Add key"}</span>
           <span className="ohf-lamp" />
         </button>
+      </div>
+
+      {/* The account the shelves belong to; signing in elsewhere brings them along. */}
+      <div className="ohf-bar ohf-bar-account ohf-enter-1">
+        <UserButton />
       </div>
     </div>
   );

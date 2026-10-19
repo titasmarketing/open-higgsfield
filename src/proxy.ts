@@ -1,16 +1,22 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
-import { DEVICE_COOKIE, DEVICE_COOKIE_OPTIONS, resolveDeviceId } from "./generation/device";
+/* Search and install metadata stay readable without an account; every other
+   page asks for one. API routes answer 401 themselves rather than redirect. */
+const PUBLIC_PATHS = new Set(["/robots.txt", "/sitemap.xml", "/manifest.webmanifest"]);
 
-export function proxy(request: NextRequest) {
-  const { deviceId, minted } = resolveDeviceId(request.cookies.get(DEVICE_COOKIE)?.value);
-  if (!minted) return NextResponse.next();
-  const response = NextResponse.next();
-  response.cookies.set(DEVICE_COOKIE, deviceId, DEVICE_COOKIE_OPTIONS);
-  return response;
-}
+export default clerkMiddleware(async (auth, request) => {
+  const { pathname } = request.nextUrl;
+  if (PUBLIC_PATHS.has(pathname) || pathname.startsWith("/api/")) return;
+  await auth.protect();
+});
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  matcher: [
+    // Skip Next.js internals and all static files, unless found in search params
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Always run for API routes
+    "/(api|trpc)(.*)",
+    // Always run for Clerk-specific frontend API routes
+    "/__clerk/(.*)",
+  ],
 };

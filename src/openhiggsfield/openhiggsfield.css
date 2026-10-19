@@ -374,6 +374,11 @@
   box-shadow: var(--shadow-2), var(--glint);
 }
 
+/* The account avatar sits in a bar of its own, sized to the avatar. */
+.ohf-bar-account {
+  padding: 0 9px;
+}
+
 /* The studio's page heading; the bar carries scope, not brand. */
 .ohf-sr {
   position: absolute;

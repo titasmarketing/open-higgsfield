@@ -1,4 +1,5 @@
 import { browserLegacy, defaultKv, type Kv, type LegacyStore } from "./idb";
+import { createSynced, type Synced } from "./sync";
 import type { Surface } from "@/generation/catalog";
 
 export type RunStatus = "running" | "completed" | "failed";
@@ -107,6 +108,19 @@ export function capHistory(records: RunRecord[], max = MAX_RECORDS): RunRecord[]
   );
 }
 
+/** One account's run history: the device cache plus the copy every other
+    device of that account reads. */
+export function createHistoryStore(userId: string): Synced<RunRecord> {
+  return createSynced<RunRecord>({
+    collection: "history",
+    userId,
+    readLocal: loadHistory,
+    writeLocal: saveHistory,
+    merge: mergeHistory,
+    coerce: (rows) => capHistory(rows.filter(isRunRecord)),
+  });
+}
+
 export function requestIdOf(record: RunRecord): string {
   return record.requestId ?? record.id.split("#")[0]!;
 }
@@ -135,7 +149,7 @@ function newerRecord(row: RunRecord, prev: RunRecord): boolean {
   return row.createdAt >= prev.createdAt;
 }
 
-function isRunRecord(value: unknown): value is RunRecord {
+export function isRunRecord(value: unknown): value is RunRecord {
   if (value === null || typeof value !== "object") return false;
   const record = value as Partial<RunRecord>;
   return (

@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
@@ -17,6 +18,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
-export default function OpenHiggsfieldPage() {
-  return <OpenHiggsfieldApp fontClassName={inter.variable} />;
+export default async function OpenHiggsfieldPage() {
+  /* The proxy has already turned signed-out visitors away; this narrows the type. */
+  const { userId } = await auth.protect();
+  return <OpenHiggsfieldApp userId={userId} fontClassName={inter.variable} />;
 }

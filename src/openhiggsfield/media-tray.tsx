@@ -9,7 +9,8 @@ import { uploadMedia } from "@/generation/upload";
 
 import { ROLE_ACCEPT, ROLE_LABELS, ROLE_TAGS, rolesOf } from "./data";
 import { AudioIcon, CloseIcon, VideoIcon } from "./icons";
-import { kindOfFile, loadUploads, mergeUploads, rememberUpload, saveUploads, type UploadRecord } from "./uploads";
+import { useStores } from "./stores";
+import { kindOfFile, mergeUploads, rememberUpload, type UploadRecord } from "./uploads";
 
 function useMedia(model: ModelEntry) {
   const imageMedia = useImageMedia();
@@ -44,6 +45,7 @@ export function useMediaTray(
   onError: (message: string | null) => void,
 ): MediaTray {
   const media = useMedia(model);
+  const { uploads: uploadsStore } = useStores();
   const [uploading, setUploading] = useState(false);
   const [uploads, setUploads] = useState<UploadRecord[]>([]);
   const [staged, setStaged] = useState<string | null>(null);
@@ -56,7 +58,7 @@ export function useMediaTray(
      the empty initial value over the stored shelf. */
   useEffect(() => {
     let live = true;
-    void loadUploads()
+    void uploadsStore.load()
       .then((rows) => {
         if (!live) return;
         setUploads((current) => mergeUploads(rows, current));
@@ -68,10 +70,10 @@ export function useMediaTray(
     return () => {
       live = false;
     };
-  }, []);
+  }, [uploadsStore]);
   useEffect(() => {
-    if (uploadsLoaded) void saveUploads(uploads);
-  }, [uploadsLoaded, uploads]);
+    if (uploadsLoaded) void uploadsStore.save(uploads);
+  }, [uploadsStore, uploadsLoaded, uploads]);
 
   const roles = rolesOf(model);
   const counts: Record<string, number> = {};
@@ -101,7 +103,7 @@ export function useMediaTray(
     } catch (caught) {
       onError(
         caught instanceof Error
-          ? `Upload failed — ${caught.message}. Check the Blob store is configured, then retry.`
+          ? `Upload failed — ${caught.message}. Retry in a moment.`
           : "Upload failed. Retry, or drop the file and generate from the prompt alone.",
       );
     } finally {

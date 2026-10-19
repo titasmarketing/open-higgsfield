@@ -1,3 +1,4 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
@@ -50,7 +51,25 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ClerkProvider
+          appearance={{
+            variables: {
+              colorPrimary: "#d1fe17",
+              colorPrimaryForeground: "#0a0a0b",
+              colorBackground: "#1a1d1f",
+              colorForeground: "#edefef",
+              colorMutedForeground: "#a8aeaf",
+              colorMuted: "#222629",
+              colorInput: "#222629",
+              colorInputForeground: "#edefef",
+              colorNeutral: "#edefef",
+            },
+          }}
+        >
+          {children}
+        </ClerkProvider>
+      </body>
     </html>
   );
 }
