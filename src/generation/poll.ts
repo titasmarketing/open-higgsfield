@@ -1,4 +1,4 @@
-import { getGenerationStatuses } from "./actions";
+import { getGenerationStatuses } from "./calls";
 import type { GenerationStatus, StatusResult } from "./platform";
 
 /** Statuses the platform never moves off again. */

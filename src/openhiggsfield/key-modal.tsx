@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import { clearPlatformCredentials, savePlatformCredentials } from "@/generation/actions";
+import { clearPlatformCredentials, savePlatformCredentials } from "@/generation/calls";
 
 import { CloseIcon } from "./icons";
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { listMarketingPresets } from "@/generation/actions";
+import { listMarketingPresets } from "@/generation/calls";
 import type { ModelEntry } from "@/generation/catalog";
 import type { MarketingPreset } from "@/generation/platform";
 import { useSettings } from "@/generation/stores/settings";

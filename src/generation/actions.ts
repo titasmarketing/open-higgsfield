@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 
+import type { ActionResult } from "./action-result";
 import { getModel, parseSettings } from "./catalog";
 import type { GenerationPlane } from "./catalog/types";
 import {
@@ -16,10 +17,42 @@ import { createPlatformClient } from "./platform";
 import type { MarketingPreset, StatusResult } from "./platform";
 import { toPlatform } from "./to-platform";
 
-export async function savePlatformCredentials(data: unknown) {
+async function saveCredentials(data: unknown) {
   const { apiKey } = parseCredentialInput(data);
   const jar = await cookies();
   jar.set(PLATFORM_KEY_COOKIE, encodeCredentials(apiKey), PLATFORM_KEY_COOKIE_OPTIONS);
+}
+
+/* Production hides the message of anything a server action throws, so every
+   failure the visitor can act on travels back as a value instead — and is
+   logged here, where the full reason is still known. */
+export async function savePlatformCredentials(data: unknown): Promise<ActionResult<void>> {
+  return attempt("save key", () => saveCredentials(data));
+}
+
+export async function submitGeneration(plane: GenerationPlane) {
+  return attempt("submit", () => submit(plane));
+}
+
+export async function listMarketingPresets(): Promise<ActionResult<MarketingPreset[]>> {
+  return attempt("list presets", presets);
+}
+
+export async function getGenerationStatuses(data: unknown): Promise<ActionResult<StatusResult[]>> {
+  return attempt("status", () => statuses(data));
+}
+
+async function attempt<T>(step: string, run: () => Promise<T>): Promise<ActionResult<T>> {
+  try {
+    return { ok: true, value: await run() };
+  } catch (caught) {
+    if (caught instanceof MissingCredentialsError) {
+      return { ok: false, error: caught.message, code: "missing-key" };
+    }
+    const error = caught instanceof Error ? caught.message : "Unexpected server error";
+    console.error(`[actions] ${step} failed`, error);
+    return { ok: false, error };
+  }
 }
 
 export async function clearPlatformCredentials() {
@@ -31,7 +64,7 @@ export async function hasPlatformCredentials() {
   return (await readStoredCredentials()) !== null;
 }
 
-export async function submitGeneration(plane: GenerationPlane) {
+async function submit(plane: GenerationPlane) {
   const model = getModel(plane.model);
   const parsed: GenerationPlane = {
     ...plane,
@@ -45,7 +78,7 @@ export async function submitGeneration(plane: GenerationPlane) {
 }
 
 /** Every visible Marketing Studio preset, all pages, in catalog order. */
-export async function listMarketingPresets(): Promise<MarketingPreset[]> {
+async function presets(): Promise<MarketingPreset[]> {
   const client = createPlatformClient(await readCredentials());
   const all: MarketingPreset[] = [];
   let cursor: string | null = null;
@@ -62,7 +95,7 @@ export async function listMarketingPresets(): Promise<MarketingPreset[]> {
     actions one at a time per client, so a poll per run would queue ahead of the
     next submit — the fan-out belongs on this side of the call, where it is
     genuinely parallel. */
-export async function getGenerationStatuses(data: unknown): Promise<StatusResult[]> {
+async function statuses(data: unknown): Promise<StatusResult[]> {
   const requestIds = parseRequestIds(data);
   const client = createPlatformClient(await readCredentials());
   return Promise.all(
