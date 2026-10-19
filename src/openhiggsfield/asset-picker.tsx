@@ -14,6 +14,7 @@ import {
   PlayBadgeIcon,
   UploadIcon,
 } from "./icons";
+import type { StagedBatch } from "./media-tray";
 import type { UploadRecord } from "./uploads";
 
 type Source = "uploads" | "generations";
@@ -46,6 +47,7 @@ export function AssetPicker({
   history,
   staged,
   uploading,
+  progress,
   onUpload,
   onApply,
   onClose,
@@ -56,8 +58,9 @@ export function AssetPicker({
   items: MediaItem[];
   uploads: UploadRecord[];
   history: RunRecord[];
-  staged: string | null;
+  staged: StagedBatch | null;
   uploading: boolean;
+  progress: { done: number; total: number } | null;
   onUpload: (role: MediaRole) => void;
   onApply: (role: MediaRole, urls: string[]) => void;
   onClose: () => void;
@@ -107,10 +110,10 @@ export function AssetPicker({
     tabsRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
   }, []);
 
-  /* A file uploaded from inside the panel joins the selection rather than the
-     plane: one press still applies the whole set. The ref holds whatever was
-     staged before this panel opened, so reopening does not re-select it. */
-  const seen = useRef(staged);
+  /* Files uploaded from inside the panel join the selection rather than the
+     plane: one press still applies the whole set. The ref holds whichever batch
+     was staged before this panel opened, so reopening does not re-select it. */
+  const seen = useRef(staged?.id ?? null);
 
   /* A new role is a new library and a new set — a start frame cannot follow the
      switch to audio — so the shelf and the selection are both re-seeded. */
@@ -143,15 +146,26 @@ export function AssetPicker({
     onClose();
   }
 
+  /* A batch larger than the free slots still reaches the shelf whole; only the
+     first picks that fit are selected, in the order they were chosen. */
   useEffect(() => {
-    if (staged === null || staged === seen.current) return;
-    seen.current = staged;
+    if (staged === null || staged.id === seen.current) return;
+    seen.current = staged.id;
+    const first = staged.urls[0];
+    if (!first) return;
     if (max === 1) {
-      setSelected([staged]);
-      commit([staged]);
+      setSelected([first]);
+      commit([first]);
       return;
     }
-    setSelected((prev) => (prev.includes(staged) ? prev : [...prev, staged]));
+    setSelected((prev) => {
+      const next = [...prev];
+      for (const url of staged.urls) {
+        if (next.length >= max) break;
+        if (!next.includes(url)) next.push(url);
+      }
+      return next;
+    });
   }, [staged]);
 
   function toggle(url: string) {
@@ -184,10 +198,16 @@ export function AssetPicker({
   const empty = emptyCopy(shelf, kind);
   const canUpload = room > 0 && !uploading;
   const uploadTip = uploading
-    ? "Uploading…"
+    ? progress && progress.total > 1
+      ? `Uploading ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
+      : "Uploading…"
     : room > 0
-      ? `Upload a ${roleNoun(role, 1)} from this device`
+      ? `Upload ${roleNoun(role, 2)} from this device — pick several at once`
       : `Every ${roleNoun(role, 1)} slot is taken — press one off to free it`;
+  const uploadLabel =
+    uploading && progress && progress.total > 1
+      ? `${progress.done} of ${progress.total}`
+      : "Upload files";
 
   /* The button states the difference it will make, so a set edited down reads
      as a removal rather than as an "Add" that removes. */
@@ -284,8 +304,8 @@ export function AssetPicker({
                 disabled={!canUpload}
                 onClick={() => onUpload(role)}
               >
-                <UploadIcon />
-                Upload file
+                {uploading ? <span className="ohf-spinner" aria-hidden /> : <UploadIcon />}
+                {uploadLabel}
               </button>
             )}
           </div>
@@ -301,7 +321,7 @@ export function AssetPicker({
                 onClick={() => onUpload(role)}
               >
                 {uploading ? <span className="ohf-spinner" aria-hidden /> : <UploadIcon size={17} />}
-                <span className="ohf-asset-upload-label">Upload file</span>
+                <span className="ohf-asset-upload-label">{uploadLabel}</span>
               </button>
             )}
 

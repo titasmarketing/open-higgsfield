@@ -254,6 +254,7 @@ export function Composer({
             history={history}
             staged={tray.staged}
             uploading={tray.uploading}
+            progress={tray.progress}
             onUpload={tray.begin}
             onApply={tray.apply}
             onClose={() => setOverlay(null)}

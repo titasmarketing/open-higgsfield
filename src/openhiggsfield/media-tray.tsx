@@ -25,20 +25,33 @@ export interface MediaTray {
   items: MediaItem[];
   /** Every file this browser has sent to Blob, newest first. */
   uploads: UploadRecord[];
-  /** The URL of the last file uploaded from the picker. It goes onto the shelf
-      and into the panel's selection, not onto the plane — the panel stages the
-      whole set and one press applies it. */
-  staged: string | null;
+  /** The files of the last batch uploaded from the picker, in the order they
+      were chosen. They go onto the shelf and into the panel's selection, not
+      onto the plane — the panel stages the whole set and one press applies it. */
+  staged: StagedBatch | null;
   uploading: boolean;
+  /** How far the batch in flight has got, for the picker to state. */
+  progress: { done: number; total: number } | null;
   allFull: boolean;
   /** Hidden file input; render it once inside the composer. */
   input: ReactNode;
-  /** Set the role the next file takes, then open the OS picker. */
+  /** Set the role the next files take, then open the OS picker. */
   begin: (role: MediaRole) => void;
   /** Make the role's inputs exactly these URLs — the picker hands back the set
       it edited, so one press both attaches and detaches. */
   apply: (role: MediaRole, urls: string[]) => void;
 }
+
+/** One pick from the OS dialog. The id tells a new batch from one the picker
+    has already taken in, even when the same files are chosen twice. */
+export interface StagedBatch {
+  id: number;
+  urls: string[];
+}
+
+/* Enough in flight to fill the pipe, few enough that a dozen large videos do
+   not each crawl at a twelfth of the uplink. */
+const UPLOAD_CONCURRENCY = 3;
 
 export function useMediaTray(
   model: ModelEntry,
@@ -46,9 +59,9 @@ export function useMediaTray(
 ): MediaTray {
   const media = useMedia(model);
   const { uploads: uploadsStore } = useStores();
-  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [uploads, setUploads] = useState<UploadRecord[]>([]);
-  const [staged, setStaged] = useState<string | null>(null);
+  const [staged, setStaged] = useState<StagedBatch | null>(null);
   const [uploadsLoaded, setUploadsLoaded] = useState(false);
   const roleRef = useRef<MediaRole>("reference");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -82,33 +95,59 @@ export function useMediaTray(
   }
   const allFull = roles.length > 0 && roles.every((role) => counts[role]! >= (model.roles[role] ?? 0));
 
-  async function onFile(file: File | undefined) {
-    if (!file) return;
+  async function onFiles(files: File[]) {
+    if (files.length === 0) return;
     onError(null);
-    setUploading(true);
-    try {
-      const uploaded = await uploadMedia(file);
-      /* The file outlives this run: it joins the shelf the picker offers, so a
-         reference used once can be reached again without a second upload. */
-      setStaged(uploaded.url);
+    setProgress({ done: 0, total: files.length });
+
+    const urls: (string | null)[] = files.map(() => null);
+    const failures: { name: string; message: string }[] = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < files.length) {
+        const index = next++;
+        const file = files[index]!;
+        try {
+          urls[index] = (await uploadMedia(file)).url;
+        } catch (caught) {
+          failures.push({
+            name: file.name,
+            message: caught instanceof Error ? caught.message : "upload failed",
+          });
+        }
+        setProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev));
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, worker),
+    );
+
+    /* The files outlive this run: they join the shelf the picker offers, so a
+       reference used once can be reached again without a second upload. The
+       batch lands in the order it was chosen, first pick on top. */
+    const now = Date.now();
+    const landed = files.flatMap((file, index) => {
+      const url = urls[index];
+      return url ? [{ file, url, createdAt: now - index }] : [];
+    });
+    if (landed.length > 0) {
       setUploads((prev) =>
-        rememberUpload(prev, {
-          id: crypto.randomUUID(),
-          url: uploaded.url,
-          kind: kindOfFile(file),
-          name: file.name,
-          createdAt: Date.now(),
-        }),
+        [...landed].reverse().reduce(
+          (shelf, { file, url, createdAt }) =>
+            rememberUpload(shelf, {
+              id: crypto.randomUUID(),
+              url,
+              kind: kindOfFile(file),
+              name: file.name,
+              createdAt,
+            }),
+          prev,
+        ),
       );
-    } catch (caught) {
-      onError(
-        caught instanceof Error
-          ? `Upload failed — ${caught.message}. Retry in a moment.`
-          : "Upload failed. Retry, or drop the file and generate from the prompt alone.",
-      );
-    } finally {
-      setUploading(false);
+      setStaged({ id: now, urls: landed.map(({ url }) => url) });
     }
+    if (failures.length > 0) onError(describeFailures(failures, files.length));
+    setProgress(null);
   }
 
   /* accept is set on the element rather than through state: the picker opens in
@@ -125,11 +164,12 @@ export function useMediaTray(
     <input
       ref={inputRef}
       type="file"
+      multiple
       hidden
       onChange={(event) => {
-        const file = event.target.files?.[0];
+        const files = Array.from(event.target.files ?? []);
         event.target.value = "";
-        void onFile(file);
+        void onFiles(files);
       }}
     />
   );
@@ -150,7 +190,33 @@ export function useMediaTray(
     }
   }
 
-  return { roles, items: media.items, uploads, staged, uploading, allFull, input, begin, apply };
+  return {
+    roles,
+    items: media.items,
+    uploads,
+    staged,
+    uploading: progress !== null,
+    progress,
+    allFull,
+    input,
+    begin,
+    apply,
+  };
+}
+
+/** One file failing names its reason; several name the files, since the
+    reasons are usually the same and the names are what the visitor re-picks. */
+function describeFailures(failures: { name: string; message: string }[], total: number): string {
+  if (failures.length === 1 && total === 1) {
+    return `Upload failed — ${failures[0]!.message}. Retry in a moment.`;
+  }
+  if (failures.length === 1) {
+    return `${failures[0]!.name} did not upload — ${failures[0]!.message}. The other files are on the shelf.`;
+  }
+  const names = failures.map((failure) => failure.name).join(", ");
+  return failures.length === total
+    ? `Upload failed — ${failures[0]!.message}. Retry in a moment.`
+    : `${failures.length} of ${total} files did not upload (${names}). The rest are on the shelf.`;
 }
 
 /** Attached inputs, above the prompt — the frames read before the words do. */
